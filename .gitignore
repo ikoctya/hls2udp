@@ -1,0 +1,8 @@
+/target
+/data
+**/*.rs.bk
+*.pdb
+.DS_Store
+Thumbs.db
+build.log
+Build-And-Install_v5_*.bat

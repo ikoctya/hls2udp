@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hls2Udp v6.0 (Rust) — Broadcast Gateway</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='3' y='3' width='58' height='58' rx='14' fill='%230f172a' stroke='%2338bdf8' stroke-width='3'/%3E%3Cpolygon points='17,19 17,45 36,32' fill='%2310b981'/%3E%3Cpath d='M40,22 A14,14 0 0,1 40,42' fill='none' stroke='%2338bdf8' stroke-width='3.5' stroke-linecap='round'/%3E%3Cpath d='M47,16 A22,22 0 0,1 47,48' fill='none' stroke='%2310b981' stroke-width='3.5' stroke-linecap='round'/%3E%3C/svg%3E">
+<style>
+:root{--bg:#0f172a;--card:#1e293b;--in:#0b1120;--bd:#334155;--tx:#f8fafc;--mu:#94a3b8;--gr:#10b981;--yl:#f59e0b;--rd:#ef4444;--bl:#38bdf8;--ac:#2563eb}
+*{box-sizing:border-box;margin:0;padding:0;font-family:"Segoe UI",system-ui,-apple-system,sans-serif}
+body{background:var(--bg);color:var(--tx);font-size:12px;line-height:1.35;padding:8px;max-width:1000px;margin:0 auto}
+.hdr{display:flex;justify-content:space-between;align-items:center;background:#0b1120;border:1px solid var(--bd);border-radius:6px;padding:7px 12px;margin-bottom:8px}
+.hdr h1{font-size:14px;font-weight:700;letter-spacing:.3px}
+.badge{font-weight:700;font-size:12px;color:var(--bl)}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:6px;padding:8px;margin-bottom:8px}
+.toolbar{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;align-items:center}
+button{border:0;border-radius:4px;color:#fff;padding:5px 10px;font-size:11.5px;font-weight:600;cursor:pointer;background:#475569}
+button:hover{filter:brightness(1.12)}
+.b-blue{background:var(--ac)}.b-green{background:var(--gr)}.b-red{background:var(--rd)}.b-dark{background:#334155}.b-warn{background:#b45309}
+table{width:100%;border-collapse:collapse;font-size:11.5px;background:var(--in);border-radius:4px;overflow:hidden}
+th,td{padding:4px 7px;text-align:left;border-bottom:1px solid var(--bd);white-space:nowrap}
+th{color:var(--mu);font-weight:700;background:#0b1120}
+tr.sel{background:#1e3a8a}
+tr:hover{background:#1e293b;cursor:pointer}
+.tabs{display:flex;gap:4px;margin-bottom:6px}
+.tab{padding:5px 12px;background:#0b1120;border:1px solid var(--bd);border-radius:4px 4px 0 0;color:var(--mu);cursor:pointer;font-weight:600}
+.tab.active{background:var(--card);color:var(--tx);border-bottom-color:var(--card)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:6px 12px}
+.row{display:flex;align-items:center;gap:6px}
+.row label{width:110px;color:var(--mu);flex-shrink:0;font-size:11.5px}
+input,select{background:var(--in);color:var(--tx);border:1px solid var(--bd);border-radius:4px;padding:4px 6px;font-size:11.5px;width:100%}
+.mono{font-family:Consolas,monospace}
+.cards4{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:8px}
+.stat-title{font-size:10.5px;font-weight:700;color:var(--mu);display:flex;align-items:center;gap:6px;margin-bottom:3px}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--mu);display:inline-block}
+.stat-val{font-size:14px;font-weight:700;font-family:Consolas,monospace}
+.stat-sub{font-size:11px;color:var(--mu);margin-top:2px}
+.bar-bg{height:8px;background:#334155;border-radius:4px;overflow:hidden;margin:4px 0}
+.bar-fg{height:100%;background:var(--gr);width:0%;transition:width .3s}
+canvas{width:100%;height:70px;background:var(--in);border:1px solid var(--bd);border-radius:4px;display:block;margin-bottom:8px}
+#logbox{background:#0b1120;color:#cbd5e1;font-family:Consolas,monospace;font-size:11px;height:105px;overflow-y:auto;padding:6px;border:1px solid var(--bd);border-radius:4px;white-space:pre-wrap}
+</style>
+</head>
+<body>
+<div class="hdr">
+  <h1>HLS → UDP / MULTICAST GATEWAY v6.0 (RUST)</h1>
+  <div id="modeBadge" class="badge">● ПОДКЛЮЧЕНИЕ...</div>
+</div>
+
+<div class="card">
+  <div class="toolbar">
+    <button class="b-blue" onclick="addCh()">+ Канал</button>
+    <button class="b-red" onclick="delCh()">Удалить</button>
+    <button class="b-green" onclick="startSel()">▶ Старт</button>
+    <button class="b-red" onclick="stopSel()">■ Стоп</button>
+    <button class="b-green" onclick="api('/api/start_all')">▶ Все</button>
+    <button class="b-red" onclick="api('/api/stop_all')">■ Все</button>
+    <button id="svcBtn" class="b-dark" onclick="toggleSvc()">Установить службу (до логина)</button>
+    <button class="b-dark" onclick="loadState()">Обновить NIC</button>
+    <button class="b-blue" style="margin-left:auto" onclick="saveCfg()">Сохранить настройки</button>
+  </div>
+  <table>
+    <thead><tr><th>Канал</th><th>Выход UDP / Multicast</th><th>Вход</th><th>Выход</th><th>In Mbps</th><th>Out Mbps</th><th>CC Err</th><th>WD</th><th>Буфер</th><th>Статус</th></tr></thead>
+    <tbody id="chRows"></tbody>
+  </table>
+</div>
+
+<div class="card">
+  <div class="tabs">
+    <div id="t1" class="tab active" onclick="showTab(1)">Настройки выбранного канала</div>
+    <div id="t2" class="tab" onclick="showTab(2)">HTTP-мониторинг (/metrics) и Telegram</div>
+  </div>
+
+  <div id="pane1">
+    <div class="grid2" style="margin-bottom:6px">
+      <div class="row"><label>Имя канала:</label><input id="c_name"></div>
+      <div class="row">
+        <label style="width:auto;display:flex;align-items:center;gap:6px;color:var(--tx)"><input type="checkbox" id="c_enabled" style="width:auto"> Автостарт со службой</label>
+        <label style="width:65px;margin-left:10px">Буфер:</label><input id="c_buf" type="number" min="1" max="15" style="width:60px">
+        <label style="width:45px">WD(с):</label><input id="c_wd" type="number" min="3" max="300" style="width:60px">
+      </div>
+      <div class="row"><label>Входной NIC:</label><select id="c_in_nic"></select></div>
+      <div class="row"><label>Выходной NIC:</label><select id="c_out_nic"></select></div>
+    </div>
+    <div class="row" style="margin-bottom:5px"><label>Primary HLS:</label><input id="c_pri" class="mono"></div>
+    <div class="row" style="margin-bottom:5px"><label>Backup HLS:</label><input id="c_bkp" class="mono"></div>
+    <div class="grid2" style="margin-bottom:5px">
+      <div class="row"><label>Выход UDP/MC:</label><input id="c_udp" class="mono"></div>
+      <div class="row">
+        <label style="width:35px">TTL:</label><input id="c_ttl" type="number" min="1" max="255" style="width:55px">
+        <label style="width:45px">DSCP:</label>
+        <select id="c_dscp"><option value="0">0 — Default</option><option value="32">32 — CS4</option><option value="34">34 — AF41</option><option value="46">46 — EF</option></select>
+      </div>
+    </div>
+    <div class="row"><label>HTTP-заголовки:</label><input id="c_hdr" class="mono" placeholder="Referer: https://...; User-Agent: ..."></div>
+  </div>
+
+  <div id="pane2" style="display:none">
+    <div class="row" style="margin-bottom:6px">
+      <label style="width:auto;color:var(--tx);display:flex;align-items:center;gap:6px"><input type="checkbox" id="g_http" style="width:auto"> HTTP-мониторинг (/status и /metrics)</label>
+      <label style="width:70px;margin-left:16px">Порт:</label><input id="g_port" type="number" min="80" max="65534" style="width:80px">
+      <button class="b-dark" onclick="window.open('/status','_blank')">Открыть /status</button>
+    </div>
+    <div class="row" style="margin-bottom:6px">
+      <label style="width:auto;color:var(--tx);display:flex;align-items:center;gap:6px"><input type="checkbox" id="g_tg" style="width:auto"> Оповещения в Telegram при сбоях и восстановлении</label>
+    </div>
+    <div class="grid2">
+      <div class="row"><label>Bot Token:</label><input id="g_tok" class="mono"></div>
+      <div class="row"><label>Chat ID:</label><input id="g_cid" class="mono"><button class="b-blue" style="width:120px" onclick="testTg()">Тест Telegram</button></div>
+    </div>
+  </div>
+</div>
+
+<div class="cards4">
+  <div class="card" style="margin:0"><div class="stat-title"><span id="d_in" class="dot"></span>ВХОД HLS / TS</div><div id="s_in" class="stat-val">—</div><div id="m_in" class="stat-sub">CC: 0 | PID: 0 | WD: 0</div></div>
+  <div class="card" style="margin:0"><div class="stat-title"><span id="d_out" class="dot"></span>ВЫХОД UDP / MC</div><div id="s_out" class="stat-val">—</div><div id="m_out" class="stat-sub">UDP: 0 | Буфер: 0/20</div></div>
+  <div class="card" style="margin:0"><div class="stat-title">ПРОЦЕССОР (CPU)</div><div id="s_cpu" class="stat-val">0.0%</div><div class="bar-bg"><div id="b_cpu" class="bar-fg"></div></div><div id="m_cpu" class="stat-sub">Система: 0.0%</div></div>
+  <div class="card" style="margin:0"><div class="stat-title">АПТАЙМ / ТРАФИК</div><div id="s_up" class="stat-val">00:00:00</div><div id="m_up" class="stat-sub">In: 0 B | Out: 0 B</div></div>
+</div>
+
+<canvas id="spark" width="960" height="70"></canvas>
+
+<div class="card" style="margin:0">
+  <div class="toolbar" style="margin-bottom:4px"><span style="font-weight:700;color:var(--mu)">ЖУРНАЛ СОБЫТИЙ</span><span id="logPath" style="color:var(--mu);font-size:11px"></span><button class="b-dark" style="margin-left:auto;padding:2px 8px" onclick="document.getElementById('logbox').textContent=''">Очистить</button></div>
+  <div id="logbox"></div>
+</div>
+
+<script>
+let state=null, selIdx=0, lastLogId=0, svcInstalled=false, histIn=[], histOut=[], lastChId='';
+function showTab(n){document.getElementById('pane1').style.display=n===1?'block':'none';document.getElementById('pane2').style.display=n===2?'block':'none';document.getElementById('t1').className='tab'+(n===1?' active':'');document.getElementById('t2').className='tab'+(n===2?' active':'');}
+function fmtRate(m){return m>=1?m.toFixed(2)+' Mbps':Math.round(m*1000)+' kbps';}
+function fmtBytes(b){if(b>=1073741824)return(b/1073741824).toFixed(2)+' GB';if(b>=1048576)return(b/1048576).toFixed(1)+' MB';if(b>=1024)return Math.round(b/1024)+' KB';return b+' B';}
+function fmtUp(s){let h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sc=s%60;return [h,m,sc].map(v=>String(v).padStart(2,'0')).join(':');}
+
+async function api(url,body){const opt={method:'POST'};if(body!==undefined){opt.headers={'Content-Type':'application/json'};opt.body=JSON.stringify(body);}const r=await fetch(url,opt);return r.json();}
+
+function fillNicSelect(id,nics){const s=document.getElementById(id);s.innerHTML='';nics.forEach(n=>{const o=document.createElement('option');o.value=n.ip;o.textContent=n.label;s.appendChild(o);});}
+
+function loadEditor(){
+  if(!state||!state.config.channels.length)return;
+  const c=state.config.channels[selIdx]||state.config.channels[0];
+  document.getElementById('c_name').value=c.name;
+  document.getElementById('c_enabled').checked=c.enabled;
+  document.getElementById('c_buf').value=c.prebuffer_segments;
+  document.getElementById('c_wd').value=c.watchdog_timeout_sec;
+  document.getElementById('c_in_nic').value=c.input_nic_ip;
+  document.getElementById('c_out_nic').value=c.output_nic_ip;
+  document.getElementById('c_pri').value=c.primary_hls_url;
+  document.getElementById('c_bkp').value=c.backup_hls_url;
+  document.getElementById('c_udp').value=c.output_udp_url;
+  document.getElementById('c_ttl').value=c.multicast_ttl;
+  document.getElementById('c_dscp').value=String(c.dscp_value);
+  document.getElementById('c_hdr').value=c.custom_headers;
+  if(lastChId!==c.id){lastChId=c.id;histIn=[];histOut=[];}
+}
+
+function readEditorToState(){
+  if(!state||!state.config.channels.length)return;
+  const c=state.config.channels[selIdx];
+  c.name=document.getElementById('c_name').value.trim()||('Канал '+(selIdx+1));
+  c.enabled=document.getElementById('c_enabled').checked;
+  c.prebuffer_segments=parseInt(document.getElementById('c_buf').value)||4;
+  c.watchdog_timeout_sec=parseInt(document.getElementById('c_wd').value)||12;
+  c.input_nic_ip=document.getElementById('c_in_nic').value;
+  c.output_nic_ip=document.getElementById('c_out_nic').value;
+  c.primary_hls_url=document.getElementById('c_pri').value.trim();
+  c.backup_hls_url=document.getElementById('c_bkp').value.trim();
+  c.output_udp_url=document.getElementById('c_udp').value.trim();
+  c.multicast_ttl=parseInt(document.getElementById('c_ttl').value)||16;
+  c.dscp_value=parseInt(document.getElementById('c_dscp').value)||0;
+  c.custom_headers=document.getElementById('c_hdr').value.trim();
+  state.config.http_monitor_enabled=document.getElementById('g_http').checked;
+  state.config.http_monitor_port=parseInt(document.getElementById('g_port').value)||8088;
+  state.config.telegram_enabled=document.getElementById('g_tg').checked;
+  state.config.telegram_bot_token=document.getElementById('g_tok').value.trim();
+  state.config.telegram_chat_id=document.getElementById('g_cid').value.trim();
+}
+
+async function saveCfg(){readEditorToState();const r=await api('/api/config',state.config);if(!r.ok)alert('Ошибка: '+r.error);}
+async function startSel(){await saveCfg();const id=state.config.channels[selIdx].id;await api('/api/channel/'+encodeURIComponent(id)+'/start');}
+async function stopSel(){const id=state.config.channels[selIdx].id;await api('/api/channel/'+encodeURIComponent(id)+'/stop');}
+async function addCh(){readEditorToState();const n=state.config.channels.length+1;state.config.channels.push({id:'ch'+Date.now().toString().slice(-5),name:'Канал '+n,enabled:true,input_nic_ip:'0.0.0.0',primary_hls_url:'http://localhost:8080/live/stream.m3u8',backup_hls_url:'',output_nic_ip:'0.0.0.0',output_udp_url:'udp://239.0.0.'+(67+n)+':5000',multicast_ttl:16,dscp_value:34,watchdog_timeout_sec:12,prebuffer_segments:4,custom_headers:''});selIdx=state.config.channels.length-1;await api('/api/config',state.config);loadEditor();render();}
+async function delCh(){if(state.config.channels.length<=1)return alert('Должен остаться хотя бы один канал');const id=state.config.channels[selIdx].id;await api('/api/channel/'+encodeURIComponent(id)+'/stop');state.config.channels.splice(selIdx,1);selIdx=Math.max(0,selIdx-1);await api('/api/config',state.config);loadEditor();render();}
+async function testTg(){await saveCfg();const r=await api('/api/telegram_test');alert(r.ok?'Тестовое сообщение отправлено!':'Ошибка: '+r.error);}
+async function toggleSvc(){const r=await api(svcInstalled?'/api/service/uninstall':'/api/service/install');alert(r.output||'Готово');loadState();}
+
+function drawSpark(){
+  const cv=document.getElementById('spark'),ctx=cv.getContext('2d'),W=cv.width,H=cv.height;
+  ctx.clearRect(0,0,W,H);
+  let maxV=1;histIn.forEach(v=>{if(v>maxV)maxV=v});histOut.forEach(v=>{if(v>maxV)maxV=v});maxV=Math.ceil(maxV*1.15);
+  ctx.strokeStyle='#1e293b';ctx.lineWidth=1;
+  for(let i=0;i<=2;i++){let y=12+(H-18)*i/2;ctx.beginPath();ctx.moveTo(42,y);ctx.lineTo(W-8,y);ctx.stroke();}
+  const plot=(arr,col)=>{if(arr.length<2)return;ctx.strokeStyle=col;ctx.lineWidth=2;ctx.beginPath();arr.forEach((v,i)=>{let x=42+(W-50)*(i/59),y=12+(H-18)*(1-Math.min(1,v/maxV));i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);});ctx.stroke();};
+  plot(histIn,'#38bdf8');plot(histOut,'#10b981');
+}
+
+function render(){
+  if(!state)return;
+  const t=state.telemetry;
+  document.getElementById('modeBadge').textContent=(t.running_as_service?'● СЛУЖБА WINDOWS (ДО ЛОГИНА)':'● АВТОНОМНЫЙ РЕЖИМ')+'  |  HTTP :'+t.http_port;
+  document.getElementById('modeBadge').style.color=t.running_as_service?'#10b981':'#38bdf8';
+  svcInstalled=state.service_installed;
+  const sb=document.getElementById('svcBtn');sb.textContent=svcInstalled?'Удалить службу Windows':'Установить службу (до логина)';sb.className=svcInstalled?'b-warn':'b-dark';
+
+  const tb=document.getElementById('chRows');tb.innerHTML='';
+  state.config.channels.forEach((c,i)=>{
+    const ct=t.channels.find(x=>x.id===c.id)||{is_running:false,input_alive:false,output_alive:false,input_bitrates_mbps:0,output_bitrates_mbps:0,cc_errors:0,watchdog_resets:0,buffer_depth:0,status_text:'Остановлен'};
+    const tr=document.createElement('tr');if(i===selIdx)tr.className='sel';
+    tr.onclick=()=>{selIdx=i;loadEditor();render();};
+    tr.innerHTML=`<td>${c.name}</td><td class="mono">${c.output_udp_url}</td><td style="color:${!ct.is_running?'#94a3b8':ct.input_alive?'#10b981':'#ef4444'}">${!ct.is_running?'СТОП':ct.input_alive?(ct.using_backup?'BACKUP':'OK'):'НЕТ'}</td><td style="color:${!ct.is_running?'#94a3b8':ct.output_alive?'#10b981':'#f59e0b'}">${!ct.is_running?'СТОП':ct.output_alive?'UDP OK':'WAIT'}</td><td class="mono">${ct.input_bitrates_mbps.toFixed(2)}</td><td class="mono">${ct.output_bitrates_mbps.toFixed(2)}</td><td>${ct.cc_errors}</td><td>${ct.watchdog_resets}</td><td>${ct.buffer_depth}/20</td><td>${ct.status_text}</td>`;
+    tb.appendChild(tr);
+  });
+
+  const selCh=state.config.channels[selIdx];
+  const sel=t.channels.find(x=>selCh&&x.id===selCh.id)||{is_running:false,input_alive:false,output_alive:false,input_bitrates_mbps:0,output_bitrates_mbps:0,cc_errors:0,active_pids:0,watchdog_resets:0,total_packets_out:0,buffer_depth:0,uptime_seconds:0,total_bytes_in:0,total_bytes_out:0};
+  document.getElementById('d_in').style.background=!sel.is_running?'#94a3b8':sel.input_alive?'#10b981':'#ef4444';
+  document.getElementById('s_in').textContent=fmtRate(sel.input_bitrates_mbps);
+  document.getElementById('m_in').textContent=`CC: ${sel.cc_errors} | PID: ${sel.active_pids} | WD: ${sel.watchdog_resets}`;
+  document.getElementById('d_out').style.background=!sel.is_running?'#94a3b8':sel.output_alive?'#10b981':'#f59e0b';
+  document.getElementById('s_out').textContent=fmtRate(sel.output_bitrates_mbps);
+  document.getElementById('m_out').textContent=`UDP: ${sel.total_packets_out} | Буфер: ${sel.buffer_depth}/20`;
+  document.getElementById('s_cpu').textContent='Утилита: '+t.cpu_process.toFixed(1)+'%';
+  document.getElementById('b_cpu').style.width=Math.min(100,t.cpu_system)+'%';
+  document.getElementById('m_cpu').textContent='Система: '+t.cpu_system.toFixed(1)+'%';
+  document.getElementById('s_up').textContent=fmtUp(sel.uptime_seconds);
+  document.getElementById('m_up').textContent=`In: ${fmtBytes(sel.total_bytes_in)} | Out: ${fmtBytes(sel.total_bytes_out)}`;
+
+  histIn.push(sel.input_bitrates_mbps);histOut.push(sel.output_bitrates_mbps);
+  if(histIn.length>60){histIn.shift();histOut.shift();}
+  drawSpark();
+}
+
+async function loadState(){
+  const r=await fetch('/api/state');state=await r.json();
+  fillNicSelect('c_in_nic',state.nics);fillNicSelect('c_out_nic',state.nics);
+  document.getElementById('logPath').textContent='('+state.log_path+')';
+  document.getElementById('g_http').checked=state.config.http_monitor_enabled;
+  document.getElementById('g_port').value=state.config.http_monitor_port;
+  document.getElementById('g_tg').checked=state.config.telegram_enabled;
+  document.getElementById('g_tok').value=state.config.telegram_bot_token;
+  document.getElementById('g_cid').value=state.config.telegram_chat_id;
+  loadEditor();render();
+}
+
+async function poll(){
+  try{
+    const r=await fetch('/api/state');const s=await r.json();
+    if(state){state.telemetry=s.telemetry;state.service_installed=s.service_installed;}else{state=s;}
+    render();
+    const lr=await fetch('/api/logs?since='+lastLogId);const logs=await lr.json();
+    if(logs.length){const lb=document.getElementById('logbox');logs.forEach(l=>{lastLogId=Math.max(lastLogId,l.id);lb.textContent+=l.text+'\n';});lb.scrollTop=lb.scrollHeight;}
+  }catch(e){}
+}
+
+loadState().then(()=>setInterval(poll,800));
+</script>
+</body>
+</html>
